@@ -7,27 +7,46 @@ var mongoUtil             = require('./database')
 const sbt_url             = 'https://steembottracker.net'
 const axios 			  = require('axios')
 
+var response 
+var bidbots
+
 mongoUtil.connectDB(async (err) => {
+	if (err) throw err
+
 	const db          = mongoUtil.getDB()
 	const dbase       = db.db('steemium')
 	const smartsteem  = dbase.collection('smartsteem')
-	let _votesellers  = await smartsteem.find().toArray()
-	let votesellers   = _votesellers.map((x) => votesellers.push(x.account))
-	const ignore_list = []
-	let response      = await axios.get(sbt_url + '/bid_bots')
-	let bidbots       = response.data
-	bidbots.map((x)   => {return ignore_list.push(x.name)})
 
-	console.log('number of registered votesellers => ' + votesellers.length)
-	console.log('number of ignored accounts => ' + ignore_list.length)
-  if (err) throw err
+	// fetch last 5k smartsteem SM payments and update the DB its faster
 
-	function start () {
+	// you could store ignored accounts per permlink
+
+	async function start (postURL) {
 		var sm_votes = []
-		let postURL = 'https://steemit.com/travelfeed/@travelfeed/introducing-travelfeed-beta'
 		var author   = postURL.substring(postURL.lastIndexOf('@') + 1, postURL.lastIndexOf('/'))
 		var permlink = postURL.substr(postURL.lastIndexOf('/') + 1)
-		let utils = dsteem.cryptoUtils
+		let utils    = dsteem.cryptoUtils
+
+		var ignore_list   = []
+		let query
+		var votesellers = []
+
+		try { 
+			response      = await axios.get(sbt_url + '/bid_bots')
+			bidbots       = response.data
+			bidbots.map((x)   => ignore_list.push(x.name))
+			ignore_list.push(...['tipu', 'ocdb'])
+			await smartsteem.insertOne({postURL: postURL, ignore: ignore_list, accounts: []})		
+		}catch(e) {
+			console.log('ignore list entry already exists , error code = ' + e.code)
+			if (e.code !== 11000) throw new Error(e)
+			query       = await smartsteem.find({postURL: postURL}).toArray()
+			ignore_list = query[0].ignore 
+			votesellers = query[0].accounts
+			console.log('number of registered votesellers => ' + votesellers.length)
+			console.log('number of ignored accounts => ' + ignore_list.length)
+		}
+
 		client.database.call('get_content', [author, permlink])
 		.then(async(result) => {
 			let votes = result.active_votes
@@ -38,14 +57,26 @@ mongoUtil.connectDB(async (err) => {
 				if (votesellers.indexOf(voter) > -1) {
 					console.log(voter + ' is already registered as SM voteseller')
 					sm_votes.push(vote)
-				}
-				if (ignore_list.indexOf(voter) > -1) {
-					console.log(voter + ' is in the ignore list')
 					continue
 				}
-				let history = await client.database.call('get_account_history', [voter, -1, 1000])
+				if (ignore_list.indexOf(voter) > -1) {
+					console.log(voter + ' is already registered in the ignore list')
+					continue
+				}
+				let history = await client.database.call('get_account_history', [voter, -1, 500])
 				let match = history.find((x) => x[1].op[0] == 'vote' && x[1].op[1].permlink == permlink)
-				if (!match) continue
+				if (!match) {
+					history = await client.database.call('get_account_history', [voter, -1, 5000])
+					match = history.find((x) => x[1].op[0] == 'vote' && x[1].op[1].permlink == permlink)
+				}
+				if (!match) {
+					console.log(voter + ' vote-trx to current post (permlink) could not be found')
+					smartsteem.updateOne(
+						{postURL: postURL},
+						{$addToSet: {ignore: voter}}
+					)
+					continue
+				}
 				let trx = await findtrxfrompermlink.findVoteTrx(match[1])
 				let digest = utils.transactionDigest(trx)
 				let signature
@@ -59,18 +90,22 @@ mongoUtil.connectDB(async (err) => {
 					continue
 				}
 				if (pub == sm_pub) {
-					console.log('BINGO smartmarket voter found!')
-					smartsteem.insertOne({account: voter})
-					.then((res) => console.log('new smartsteem voteseller added to db'))
-					.catch((e) => console.log(e))
-					console.log(trx)
+					console.log('BINGO smartmarket voter found! - ' + voter)
+					smartsteem.updateOne(
+						{postURL: postURL},
+						{$addToSet: {accounts: voter}}
+					)
 					sm_votes.push(vote)
+				} else {
+					console.log(voter + ' added to ignore list')
+					smartsteem.updateOne(
+						{postURL: postURL},
+						{$addToSet: {ignore: voter}}
+					)
 				}
 			}
 			console.log(sm_votes)
 		})
 	}
-
-start()
-
+	start('https://steemit.com/travelfeed/@travelfeed/introducing-travelfeed-beta')
 })
