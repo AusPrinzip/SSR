@@ -56,7 +56,6 @@ function loadClients () {
 		} catch(e) {
 			console.log(e)
 		}
-		delete promises
 		return resolve()
 	})
 }
@@ -118,8 +117,6 @@ mongoUtil.connectDB(async (err) => {
 				match = history.find((x) => x[1].op[0] == 'vote' && x[1].op[1].permlink == permlink)
 			}
 			if (!match) {
-				delete history
-				delete match
 				console.log(voter + ' vote-trx to current post (permlink) could not be found')
 				smartsteem.updateOne(
 					{postURL: postURL},
@@ -128,8 +125,6 @@ mongoUtil.connectDB(async (err) => {
 				return resolve()
 			}
 			let trx = await findtrxfrompermlink.findVoteTrx(match[1], client)
-			delete history
-			delete match
 			let digest = utils.transactionDigest(trx)
 			let signature
 			let pub = ''
@@ -146,7 +141,6 @@ mongoUtil.connectDB(async (err) => {
 					if (i == (trx.signatures.length - 1)) return reject(new Error('cannot extract pubkey'))
 				}
 			}
-			delete trx
 			if (pub == sm_pub) {
 				console.log(chalk.green('BINGO smartmarket voter found! - ' + voter))
 				smartsteem.updateOne(
@@ -179,11 +173,9 @@ mongoUtil.connectDB(async (err) => {
 		var ignore_list = []
 		let query
 		var votesellers = registry[0].get_account_history
-		delete registry
 		try { 
 			response      = await axios.get(sbt_url + '/bid_bots')
 			bidbots       = response.data
-			delete response
 			bidbots.map((x)   => ignore_list.push(x.name))
 			ignore_list.push(...['tipu', 'ocdb'])
 			await smartsteem.insertOne({postURL: postURL, ignore: ignore_list, accounts: []})		
@@ -196,7 +188,6 @@ mongoUtil.connectDB(async (err) => {
 			console.log('number of registered votesellers => ' + votesellers.length)
 			console.log('number of ignored accounts => ' + ignore_list.length)
 		}
-		delete query
 		let random_node = getRandomInt(confirmed_clients.length)
 		confirmed_clients[random_node].database.call('get_content', [author, permlink])
 		.then(async(result) => {
