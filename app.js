@@ -1,6 +1,6 @@
 
 const dsteem              = require('dsteem')
-const nodes               = ['anyx.io', 'api.steemit.com', 'api.steemitdev.com', 'api.steem.house', 'appbasetest.timcliff.com', 'gtg.steem.house:8090', 'steemd.minnowsupportproject.org', 'steemd.privex.io', 'rpc.usesteem.com', 'rpc.steemviz.com', 'rpc.steemliberator.com', 'rpc.curiesteem.com']
+const nodes               = ['anyx.io', 'api.steemit.com', 'api.steemitdev.com', 'steemd.privex.io', 'rpc.usesteem.com', 'rpc.steemviz.com', 'rpc.steemliberator.com', 'rpc.curiesteem.com']
 
 const chalk = require('chalk')
 // const log   = console.log()
@@ -15,9 +15,10 @@ const utils               = dsteem.cryptoUtils
 var response 
 var bidbots
 
-var sm_votes          = []
 var clients           = []
 var confirmed_clients = [] 
+
+nodes.length = 3
 
 nodes.forEach((node) => {
 	clients.push(new dsteem.Client('https://' + node))
@@ -55,6 +56,7 @@ function loadClients () {
 		} catch(e) {
 			console.log(e)
 		}
+		delete promises
 		return resolve()
 	})
 }
@@ -116,33 +118,42 @@ mongoUtil.connectDB(async (err) => {
 				match = history.find((x) => x[1].op[0] == 'vote' && x[1].op[1].permlink == permlink)
 			}
 			if (!match) {
+				delete history
+				delete match
 				console.log(voter + ' vote-trx to current post (permlink) could not be found')
-				console.log(history.length)
 				smartsteem.updateOne(
 					{postURL: postURL},
 					{$addToSet: {ignore: voter}}
 				).catch((e) => console.log(e))
 				return resolve()
 			}
-			let trx = await findtrxfrompermlink.findVoteTrx(match[1])
+			let trx = await findtrxfrompermlink.findVoteTrx(match[1], client)
+			delete history
+			delete match
 			let digest = utils.transactionDigest(trx)
 			let signature
 			let pub = ''
-			try { 
-				signature = dsteem.Signature.fromString(trx.signatures[0])
-				pub = signature.recover(digest).toString()
-			} catch(e) {
-				console.log(e)
-				console.log(trx.signatures)
-				return resolve()
+			for (let i = 0; i < trx.signatures.length; i++) { 
+				let _signature = trx.signatures[i]
+				try { 
+					signature = dsteem.Signature.fromString(_signature)
+					pub = signature.recover(digest).toString()
+				} catch(e) {
+					console.log('num sigs = ' + trx.signatures.length)
+					console.log(e)
+					console.log(vote.voter)
+					// console.log(trx)
+					if (i == (trx.signatures.length - 1)) return reject(new Error('cannot extract pubkey'))
+				}
 			}
+			delete trx
 			if (pub == sm_pub) {
 				console.log(chalk.green('BINGO smartmarket voter found! - ' + voter))
 				smartsteem.updateOne(
 					{postURL: postURL},
 					{$addToSet: {accounts: voter}}
 				).catch((e) => console.log(e))
-				sm_votes.push(vote)
+				// sm_votes.push(vote)
 				return resolve()
 			} else {
 				console.log(voter + ' added to ignore list')
@@ -168,10 +179,11 @@ mongoUtil.connectDB(async (err) => {
 		var ignore_list = []
 		let query
 		var votesellers = registry[0].get_account_history
-
+		delete registry
 		try { 
 			response      = await axios.get(sbt_url + '/bid_bots')
 			bidbots       = response.data
+			delete response
 			bidbots.map((x)   => ignore_list.push(x.name))
 			ignore_list.push(...['tipu', 'ocdb'])
 			await smartsteem.insertOne({postURL: postURL, ignore: ignore_list, accounts: []})		
@@ -184,6 +196,7 @@ mongoUtil.connectDB(async (err) => {
 			console.log('number of registered votesellers => ' + votesellers.length)
 			console.log('number of ignored accounts => ' + ignore_list.length)
 		}
+		delete query
 		let random_node = getRandomInt(confirmed_clients.length)
 		confirmed_clients[random_node].database.call('get_content', [author, permlink])
 		.then(async(result) => {
@@ -197,7 +210,7 @@ mongoUtil.connectDB(async (err) => {
 				console.log(i + ' / ' + votes.length + ' ' + voter)
 				if (votesellers.indexOf(voter) > -1) {
 					console.log(voter + ' is already registered as SM voteseller')
-					sm_votes.push(vote)
+					// sm_votes.push(vote)
 					continue
 				}
 				if (ignore_list.indexOf(voter) > -1) {
@@ -205,22 +218,21 @@ mongoUtil.connectDB(async (err) => {
 					continue
 				}
 				promises.push(Promise.race([compute(confirmed_clients[promises.length], vote, postURL), timeout(10)]))
+				// await wait(2)
 				// let promise = compute(confirmed_clients[promises.length], vote, postURL)
 				console.log('using ' + confirmed_clients[promises.length - 1].address)
 				if (promises.length == confirmed_clients.length) {
 					console.log('confirmed_clients = ' + confirmed_clients.length)
 					console.log(chalk.yellow('reached ' + promises.length + ' promises..waiting'))
-					console.log(promises)
 					// await Promise.race(promises)
 					// await wait(8)
 					try { 
 						await Promise.all(promises)
-						// await wait(1)
+						// await wait(8)
 					} catch(e) {
 						console.log(chalk.bgRed.bold(e))
 					}
-					console.log('done')
-					promises.splice(0, promises.length)
+					promises = []
 				}
 			}
 			// console.log(sm_votes)
