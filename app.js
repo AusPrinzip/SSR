@@ -18,7 +18,7 @@ var bidbots
 var clients           = []
 var confirmed_clients = [] 
 
-nodes.length = 3
+nodes.length = 8
 
 nodes.forEach((node) => {
 	clients.push(new dsteem.Client('https://' + node))
@@ -39,10 +39,11 @@ function timeout (seconds) {
 function loadClients () {
 	return new Promise(async (resolve, reject) => {
 		var promises = []
-		clients.forEach(async(client) => { 
+		for (let i = 0; i < clients.length; i++) {
+			let client = clients[i]
 			try {
 				promises.push(Promise.race([client.database.call('get_account_history', ['smartsteem', -1, 50]), timeout(3)])) 
-				await Promise.all(promises)
+				// await Promise.all(promises)
 				// console.log(client.address + ' is good')
 				console.log(chalk.blue(client.address + ' is good'))
 				confirmed_clients.push(client)
@@ -51,7 +52,7 @@ function loadClients () {
 				console.log(chalk.red(client.address + ' is bad'))
 				let new_client = new dsteem.Client('https://' + nodes[nodes.pop()])
 			}
-		})
+		}
 		try {
 			await Promise.all(promises)
 		} catch(e) {
@@ -228,7 +229,7 @@ mongoUtil.connectDB(async (err) => {
 					continue
 				}
 				promises.push(Promise.race([compute(confirmed_clients[promises.length], vote, postURL), timeout(10)]))
-				// await wait(2)
+				await wait(1)
 				// let promise = compute(confirmed_clients[promises.length], vote, postURL)
 				console.log('using ' + confirmed_clients[promises.length - 1].address)
 				if (promises.length == confirmed_clients.length) {
