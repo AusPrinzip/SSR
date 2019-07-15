@@ -50,13 +50,12 @@ function loadClients () {
 				// console.log(e)
 				console.log(chalk.red(client.address + ' is bad'))
 				let new_client = new dsteem.Client('https://' + nodes[nodes.pop()])
-				promises.push(Promise.race([new_client.database.call('get_account_history', ['smartsteem', -1, 50]), timeout(3)])) 
 			}
 		})
 		try {
 			await Promise.all(promises)
 		} catch(e) {
-			// console.log(e)
+			console.log(e)
 		}
 		return resolve()
 	})
