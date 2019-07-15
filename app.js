@@ -1,6 +1,6 @@
 
 const dsteem              = require('dsteem')
-const nodes               = ['anyx.io', 'api.steemit.com', 'api.steemitdev.com', 'steemd.privex.io', 'rpc.usesteem.com', 'rpc.steemviz.com', 'rpc.steemliberator.com', 'rpc.curiesteem.com']
+const nodes               = ['anyx.io', 'api.steemit.com', 'steemd.privex.io', 'rpc.usesteem.com', 'rpc.steemviz.com', 'rpc.steemliberator.com', 'rpc.curiesteem.com', 'api.steemitdev.com']
 
 const chalk = require('chalk')
 // const log   = console.log()
@@ -47,14 +47,16 @@ function loadClients () {
 				console.log(chalk.blue(client.address + ' is good'))
 				confirmed_clients.push(client)
 			} catch(e) {
-				console.log(e)
+				// console.log(e)
 				console.log(chalk.red(client.address + ' is bad'))
+				let new_client = new dsteem.Client('https://' + nodes[nodes.pop()])
+				promises.push(Promise.race([new_client.database.call('get_account_history', ['smartsteem', -1, 50]), timeout(3)])) 
 			}
 		})
 		try {
 			await Promise.all(promises)
 		} catch(e) {
-			console.log(e)
+			// console.log(e)
 		}
 		return resolve()
 	})
@@ -68,13 +70,21 @@ mongoUtil.connectDB(async (err) => {
 	const db          = mongoUtil.getDB()
 	const dbase       = db.db('steemium')
 	const smartsteem  = dbase.collection('smartsteem')
-
+	const campaigns   = dbase.collection('campaigns')
 	// fetch last 5k smartsteem SM payments and update the DB its faster
 
-	async function getUsers () {
+	function fetchHistoricalPrices(postURL) {
+		return new Promise(async (resolve, reject) => {
+			let campaign = await campaigns.find({postURL: postURL}).toArray()
+			let prices = campaign[0].prices
+			return resolve(prices)
+		})
+	}
+
+	async function fetchLastVoteSellers () {
 		return new Promise((resolve, reject) => {
 			var votesellers = []
-			client.database.call('get_account_history', ['smartsteem', -1, 5000])
+			confirmed_clients[0].database.call('get_account_history', ['smartsteem', -1, 5000])
 			.then((res) => {
 				res.forEach((el) => {
 					let trans = el[1]
@@ -94,7 +104,7 @@ mongoUtil.connectDB(async (err) => {
 	  return Math.floor(Math.random() * Math.floor(max));
 	}
 
-	function compute (client, vote, postURL) {
+	function compute (client, vote, postURL, prices) {
 		return new Promise(async(resolve, reject) => {
 			let  permlink = postURL.substr(postURL.lastIndexOf('/') + 1)
 			let voter     = vote.voter
@@ -118,10 +128,7 @@ mongoUtil.connectDB(async (err) => {
 			}
 			if (!match) {
 				console.log(voter + ' vote-trx to current post (permlink) could not be found')
-				smartsteem.updateOne(
-					{postURL: postURL},
-					{$addToSet: {ignore: voter}}
-				).catch((e) => console.log(e))
+				smartsteem.insertOne({ account: vote.voter, ignore: true, postURL: postURL }).catch((e) => console.log(e))
 				return resolve()
 			}
 			let trx = await findtrxfrompermlink.findVoteTrx(match[1], client)
@@ -142,52 +149,65 @@ mongoUtil.connectDB(async (err) => {
 				}
 			}
 			if (pub == sm_pub) {
+				// find account SP
+
 				console.log(chalk.green('BINGO smartmarket voter found! - ' + voter))
-				smartsteem.updateOne(
-					{postURL: postURL},
-					{$addToSet: {accounts: voter}}
-				).catch((e) => console.log(e))
+				smartsteem.insertOne({ account: vote.voter, vote: vote, ignore: false, postURL: postURL, prices: prices	 }).catch((e) => console.log(e))
 				// sm_votes.push(vote)
 				return resolve()
 			} else {
 				console.log(voter + ' added to ignore list')
-				smartsteem.updateOne(
-					{postURL: postURL},
-					{$addToSet: {ignore: voter}}
-				).catch((e) => console.log(e))
+				smartsteem.insertOne({ account: vote.voter, ignore: true, postURL: postURL }).catch((e) => console.log(e))
 				return resolve()
 			}
 		})
 	}
 
+	function createIndex () { 
+	  smartsteem.createIndex( { 'account': 1 },{ unique:true })
+	  .then((res) => console.log(res))
+	  .catch((e) => console.log(e))
+	}
+
 	async function start (postURL) {
 		await loadClients()
+		let prices = {}
+		try { 
+			prices = await fetchHistoricalPrices(postURL)
+		}catch (e){
+			console.log(e)
+		}
 		console.log('Number of rpc node connections: ' + confirmed_clients.length)
 		let registry = await smartsteem.find({'get_account_history': {$exists: true}}).toArray()
-		let lastUpdate = registry[0].lastUpdate
+		let votesellers
+		if (!registry[0]) {
+			let lastVoteSellers = await fetchLastVoteSellers()
+			await smartsteem.insertOne(
+				{'get_account_history': lastVoteSellers, createdDate: new Date(), lastUpdate: new Date()}
+			)
+			votesellers = lastVoteSellers
+		} else {
+			votesellers = registry[0].get_account_history
+		}
 		// refresh get account history every X time
 
 		var author   = postURL.substring(postURL.lastIndexOf('@') + 1, postURL.lastIndexOf('/'))
 		var permlink = postURL.substr(postURL.lastIndexOf('/') + 1)
 
 		var ignore_list = []
-		let query
-		var votesellers = registry[0].get_account_history
-		try { 
-			response      = await axios.get(sbt_url + '/bid_bots')
-			bidbots       = response.data
-			bidbots.map((x)   => ignore_list.push(x.name))
-			ignore_list.push(...['tipu', 'ocdb'])
-			await smartsteem.insertOne({postURL: postURL, ignore: ignore_list, accounts: []})		
-		}catch(e) {
-			console.log('ignore list entry already exists , error code = ' + e.code)
-			if (e.code !== 11000) throw new Error(e)
-			query       = await smartsteem.find({postURL: postURL}).toArray()
-			ignore_list = query[0].ignore
-			votesellers.push(...query[0].accounts)
-			console.log('number of registered votesellers => ' + votesellers.length)
-			console.log('number of ignored accounts => ' + ignore_list.length)
-		}
+
+		response      = await axios.get(sbt_url + '/bid_bots')
+		bidbots       = response.data
+		bidbots.map((x)   => ignore_list.push(x.name))
+		ignore_list.push(...['tipu', 'ocdb'])		
+
+		query_ignore      = await smartsteem.find({$and:[{account: {$exists:true}}, {postURL: postURL}, {ignore: true}]}).toArray()
+		query_votesellers = await smartsteem.find({$and:[{account: {$exists:true}}, {postURL: postURL}, {ignore: false}]}).toArray()
+		votesellers.push(...query_votesellers.map((x) => x.account))
+		ignore_list.push(...query_ignore.map((x) => x.account))
+		console.log('number of registered votesellers => ' + votesellers.length)
+		console.log('number of ignored accounts => ' + ignore_list.length)
+		
 		let random_node = getRandomInt(confirmed_clients.length)
 		confirmed_clients[random_node].database.call('get_content', [author, permlink])
 		.then(async(result) => {
@@ -230,11 +250,6 @@ mongoUtil.connectDB(async (err) => {
 		})
 	}
 	start('https://steemit.com/travelfeed/@travelfeed/introducing-travelfeed-beta')
-	// getUsers().then((res) => {
-	// 	smartsteem.insertOne(
-	// 		{'get_account_history': res, createdDate: new Date(), lastUpdate: new Date()}
-	// 	)
-	// })
 })
 
 

@@ -1,5 +1,6 @@
 const config = require("../config/index.js");
 const MongoClient = require('mongodb').MongoClient;
+
 // const utils = require('../scripts/utils_mix.js')
 var host, port, db, user, password 
 // var env = config.env
@@ -39,5 +40,7 @@ const connectDB = async (callback) => {
 const getDB = () => _db
 
 const disconnectDB = () => _db.close()
+
+
 
 module.exports = { connectDB, getDB, disconnectDB }
