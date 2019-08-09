@@ -19,6 +19,7 @@ var pendingVotes = []
 
 var vote_sellers = []
 var ignore_list  = []
+var corrupted    = []
 
 nodes.forEach((node) => {
 	clients.push(new dsteem.Client('https://' + node))
@@ -129,11 +130,13 @@ mongoUtil.connectDB(async (err) => {
 
 		query_ignore      = await smartsteem.find({$and:[{account: {$exists:true}}, {postURL: {$regex : permlink }}, {ignore: true}]}).toArray()
 		query_votesellers = await smartsteem.find({$and:[{account: {$exists:true}}, {postURL: {$regex : permlink }}, {ignore: false}, {$or: [{ mb: { $exists:false } }, { mb: false } ]}]}).toArray()
+		query_corrupted   = await smartsteem.find({$and:[{account: {$exists:true}}, {postURL: {$regex : permlink }}, {mb: true}]}).toArray()
 		vote_sellers.push(...query_votesellers.map((x) => x.account))
 		ignore_list.push(...query_ignore.map((x) => x.account))
+		corrupted.push(...query_corrupted.map((x) => x.account))
 		console.log('number of registered votesellers => ' + vote_sellers.length)
 		console.log('number of ignored accounts => ' + ignore_list.length)
-		
+		console.log('number of corrupted signatures => ' + corrupted.length)
 		// let random_node = getRandomInt(clients.length)
 		clients[0].database.call('get_content', [author, permlink])
 		.then(async(result) => {
@@ -148,8 +151,10 @@ mongoUtil.connectDB(async (err) => {
 				console.log(pendingVotes)
 				query_ignore      = await smartsteem.find({$and:[{account: {$exists:true}}, {postURL: {$regex : permlink }}, {ignore: true}]}).toArray()
 				query_votesellers = await smartsteem.find({$and:[{account: {$exists:true}}, {postURL: {$regex : permlink }}, {ignore: false}, {$or: [{ mb: { $exists:false } }, { mb: false } ]}]}).toArray()
+				query_corrupted   = await smartsteem.find({$and:[{account: {$exists:true}}, {postURL: {$regex : permlink }}, {mb: true}]}).toArray()
 				vote_sellers.push(...query_votesellers.map((x) => x.account))
 				ignore_list.push(...query_ignore.map((x) => x.account))
+				corrupted.push(...query_corrupted.map((x) => x.account))
 				await votesLoop(pendingVotes, true)
 			}
 			await getVoteValue(postURL)
@@ -185,6 +190,11 @@ mongoUtil.connectDB(async (err) => {
 				}
 				if (ignore_list.indexOf(voter) > -1) {
 					console.log(voter + ' is already registered in the ignore list')
+					continue
+				}
+
+				if (corrupted.indexOf(voter) > -1) {
+					console.log(voter + ' is already registered in the corrupted list')
 					continue
 				}
 				//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -313,6 +323,8 @@ mongoUtil.connectDB(async (err) => {
 					signature = dsteem.Signature.fromString(_signature)
 					pub = signature.recover(digest).toString()
 				} catch(e) {
+					console.log(trx)
+					console.log(e)
 					if (voter !== trx.operations[0][1].voter) return console.log(chalk.red('trx op voter from "findtrxfrompermlink" result does not match current voter'))
 					console.log(chalk.red(voter + ': cannot extract pubkey from origin trx'))
 					// console.log(trx)
