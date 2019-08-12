@@ -1,9 +1,11 @@
 
 const dsteem              = require('dsteem')
-const nodes               = ['hive.anyx.io', 'rpc.usesteem.com', 'rpc.steemviz.com', 'anyx.io', 'api.steemit.com', 'steemd.privex.io', 'rpc.steemliberator.com', 'api.steemitdev.com', 'api.steem.house', 'gtg.steem.house:8090', 'appbasetest.timcliff.com']
+var   nodes               = ['hive.anyx.io', 'rpc.usesteem.com', 'rpc.steemviz.com', 'anyx.io', 'api.steemit.com', 'steemd.privex.io', 'rpc.steemliberator.com', 'api.steemitdev.com', 'api.steem.house', 'gtg.steem.house:8090', 'appbasetest.timcliff.com']
 const chalk = require('chalk')
 // const log   = console.log()
-
+const blacklist = ['api.steemitdev.com']
+nodes.filter((x) => blacklist.indexOf(x) == -1)
+// console.log(nodes)
 const findtrxfrompermlink = require('../findtrxfrompermlink/app.js')
 const sm_pub              = 'STM7yk3tav5BFEyppNzHhKaXsMTPw8xYX1B1gWXq6bvtT34uVUKbQ'
 var mongoUtil             = require('./database')
@@ -277,10 +279,10 @@ mongoUtil.connectDB(async (err) => {
 			let voter     = vote.voter
 			let history   = []
 			let match     = null
+			var interval  = 0
 			while (!match) {
-				var interval = 0
 				try {
-					history = await client.database.call('get_account_history', [voter, -1 + interval, 1500 + interval])
+					history = await client.database.call('get_account_history', [voter, -1 - interval, 1500 + interval])
 				} catch(e){
 					console.log(e)
 					console.log(client.address + ' error at get_account_history  ' + client.address)
@@ -290,7 +292,9 @@ mongoUtil.connectDB(async (err) => {
 				match = history.find((x) => x[1].op[0] == 'vote' && x[1].op[1].permlink == permlink)
 				interval += 1500
 				await wait(0.5)
+				// if (interval > 5000) return reject()
 			}
+			if (interval > 0) console.log(vote.voter + ' findVote resolved with interval = ' + interval)
 			return resolve(match)
 		})
 	}
