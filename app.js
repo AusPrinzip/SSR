@@ -21,6 +21,8 @@ var vote_sellers = []
 var ignore_list  = []
 var corrupted    = []
 
+var postURL      = ''
+
 nodes.forEach((node) => {
 	clients.push(new dsteem.Client('https://' + node))
 })
@@ -86,7 +88,7 @@ mongoUtil.connectDB(async (err) => {
 		}
 	    if (process.argv[2] == 'start' && !process.argv[3]) throw new Error('missing postURL!')
 	    console.log('postURL => ' + process.argv[3])
-		let postURL  = process.argv[3]
+		postURL      = process.argv[3]
 		var author   = postURL.substring(postURL.lastIndexOf('@') + 1, postURL.lastIndexOf('/'))
 		var permlink = postURL.substr(postURL.lastIndexOf('/') + 1)
 		var campaign
@@ -159,82 +161,80 @@ mongoUtil.connectDB(async (err) => {
 			}
 			await getVoteValue(postURL)
 		})
-
-		async function minnowbooster () {
-			let accounts = await clients[0].database.call('get_accounts', corrupted.map((x) => x.voter))
-		}
-
-		async function votesLoop (votes, rerun) {
-			var promises = []
-			for (let i = 0; i < votes.length; i++) {
-				let vote     = votes[i]
-				let voter    = vote.voter
-// 				var pending  = []
-				console.log(i + ' / ' + (votes.length - 1) + ' ' + chalk.bold(voter))
-				if (vote_sellers.indexOf(voter) > -1) {
-					try {
-						console.log(voter + ' is already registered as SM voteseller')
-						// pending.push({ account: vote.voter, vote: vote, ignore: false, postURL: postURL, prices: prices})
-						// console.log(chalk.green('succesfully added ' + voter))
-						continue
-					}catch(e) {
-						if (e.code == 11000) {
-							console.log(voter + ' is duplicated')
-							continue
-						} else {
-							console.log(e)
-							console.log(chalk.red('breaking the loop...'))
-							break
-						}
-					}
-				}
-				if (ignore_list.indexOf(voter) > -1) {
-					console.log(voter + ' is already registered in the ignore list')
-					continue
-				}
-
-				if (corrupted.indexOf(voter) > -1) {
-					console.log(voter + ' is already registered in the corrupted list')
-					continue
-				}
-				//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-				///// The main reason you dont worry about 'Promise.all' triggering at the first rejection -even if there are still pending promises, ////
-				///// is the fact that you set a defined max tolerance for timeout (rejection) and that make use of a reflection abstraction that       //
-				///// avoids rejections, that way, you have better control over the asynchronous processes    	     									//
-				//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-				promises.push(reflect(Promise.race([compute(clients[promises.length], vote, postURL), timeout(7, 'compute', clients[promises.length].address, vote)])))
-
-				console.log('using ' + clients[promises.length - 1].address + ' for ' + voter)
-				if (promises.length == clients.length) {
-					// await wait(5)
-					console.log('clients = ' + clients.length)
-					console.log(chalk.yellow('reached ' + promises.length + ' promises..waiting'))
-					let results = await Promise.all(promises)
-					let failed_promises = results.filter((result) => result.status == 'rejected').map((x) => x.e)
-					// add to pending votes all failed ones
-					pendingVotes.push(...failed_promises)
-					// in case we are re-running from pendingVotes, update the list removing the resolved
-					let successful_promises = results.filter((result) => result.status == 'fulfilled').map((x) => x.v)
-					if (rerun) {
-						pendingVotes.filter((x) => {successful_promises.indexOf(x) == -1})
-					}
-					console.log('number of pending votes = ' + pendingVotes.length)
-					console.log('all promises have resolved/rejected, continueing..')
-					promises = []
-				}
-			}
-			// if (pending.length == 0) return console.log(chalk.bgGreen.bold('voteLoop function finished, no pending votes'))
-			// try { 
-			// 	await smartsteem.insertMany(pending, {ordered: false})
-			// 	console.log('bulkInsert all good')
-			// } catch(e) {
-			// 	console.log(chalk.red('bulkInsert error at end of loop'))
-			// 	console.log(e)
-			// }
-		}
 	}
 
+	async function minnowbooster () {
+		let accounts = await clients[0].database.call('get_accounts', corrupted.map((x) => x.voter))
+	}
 
+	async function votesLoop (votes, rerun) {
+		var promises = []
+		for (let i = 0; i < votes.length; i++) {
+			let vote     = votes[i]
+			let voter    = vote.voter
+// 				var pending  = []
+			console.log(i + ' / ' + (votes.length - 1) + ' ' + chalk.bold(voter))
+			if (vote_sellers.indexOf(voter) > -1) {
+				try {
+					console.log(voter + ' is already registered as SM voteseller')
+					// pending.push({ account: vote.voter, vote: vote, ignore: false, postURL: postURL, prices: prices})
+					// console.log(chalk.green('succesfully added ' + voter))
+					continue
+				}catch(e) {
+					if (e.code == 11000) {
+						console.log(voter + ' is duplicated')
+						continue
+					} else {
+						console.log(e)
+						console.log(chalk.red('breaking the loop...'))
+						break
+					}
+				}
+			}
+			if (ignore_list.indexOf(voter) > -1) {
+				console.log(voter + ' is already registered in the ignore list')
+				continue
+			}
+
+			if (corrupted.indexOf(voter) > -1) {
+				console.log(voter + ' is already registered in the corrupted list')
+				continue
+			}
+			//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+			///// The main reason you dont worry about 'Promise.all' triggering at the first rejection -even if there are still pending promises, ////
+			///// is the fact that you set a defined max tolerance for timeout (rejection) and that make use of a reflection abstraction that       //
+			///// avoids rejections, that way, you have better control over the asynchronous processes    	     									//
+			//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+			promises.push(reflect(Promise.race([compute(clients[promises.length], vote), timeout(7, 'compute', clients[promises.length].address, vote)])))
+
+			console.log('using ' + clients[promises.length - 1].address + ' for ' + voter)
+			if (promises.length == clients.length) {
+				// await wait(5)
+				console.log('clients = ' + clients.length)
+				console.log(chalk.yellow('reached ' + promises.length + ' promises..waiting'))
+				let results = await Promise.all(promises)
+				let failed_promises = results.filter((result) => result.status == 'rejected').map((x) => x.e)
+				// add to pending votes all failed ones
+				pendingVotes.push(...failed_promises)
+				// in case we are re-running from pendingVotes, update the list removing the resolved
+				let successful_promises = results.filter((result) => result.status == 'fulfilled').map((x) => x.v)
+				if (rerun) {
+					pendingVotes.filter((x) => {successful_promises.indexOf(x) == -1})
+				}
+				console.log('number of pending votes = ' + pendingVotes.length)
+				console.log('all promises have resolved/rejected, continueing..')
+				promises = []
+			}
+		}
+		// if (pending.length == 0) return console.log(chalk.bgGreen.bold('voteLoop function finished, no pending votes'))
+		// try { 
+		// 	await smartsteem.insertMany(pending, {ordered: false})
+		// 	console.log('bulkInsert all good')
+		// } catch(e) {
+		// 	console.log(chalk.red('bulkInsert error at end of loop'))
+		// 	console.log(e)
+		// }
+	}
 
 	function fetchHistoricalPrices(postURL) {
 		return new Promise(async (resolve, reject) => {
@@ -271,39 +271,39 @@ mongoUtil.connectDB(async (err) => {
 	  return Math.floor(Math.random() * Math.floor(max));
 	}
 
-	function compute (client, vote, postURL, prices) {
-		return new Promise(async(resolve, reject) => {
+	function findVote (client, vote) {
+		return new Promise(async (resolve, reject) => {
 			let  permlink = postURL.substr(postURL.lastIndexOf('/') + 1)
 			let voter     = vote.voter
 			let history   = []
-			try {
-				history = await client.database.call('get_account_history', [voter, -1, 1500])
-			} catch(e){
-				console.log(e)
-				console.log(client.address + ' error at get_account_history depth 1500 ' + client.address)
-				return reject(vote)
-			}
-			
-			let match = history.find((x) => x[1].op[0] == 'vote' && x[1].op[1].permlink == permlink)
-			if (!match) {
+			let match     = null
+			while (!match) {
+				var interval = 0
 				try {
-					history =  await client.database.call('get_account_history', [voter, -1, 5000])
+					history = await client.database.call('get_account_history', [voter, -1 + interval, 1500 + interval])
 				} catch(e){
 					console.log(e)
-					console.log(client.address + ' error at get_account_history depth 5000 ' + client.address)
+					console.log(client.address + ' error at get_account_history  ' + client.address)
 					return reject(vote)
 				}
+				
 				match = history.find((x) => x[1].op[0] == 'vote' && x[1].op[1].permlink == permlink)
+				interval += 1500
+				await wait(0.5)
 			}
-			if (!match) {
-				console.log(voter + ' vote-trx to current post (permlink) could not be found')
-				smartsteem.insertOne({ account: vote.voter, ignore: true, postURL: postURL })
-				.catch((e) => {
-					console.log('debug ' + e.code)
-					if (e.code == 11000) console.log(voter + ' already registered')
-					else console.log(e)
-				})
-				return resolve(vote)
+			return resolve(match)
+		})
+	}
+
+	function compute (client, vote, prices) {
+		return new Promise(async(resolve, reject) => {
+			let voter = vote.voter
+			let match
+			try {
+				match = await findVote(client, vote)
+			} catch(e) {
+				console.log(e)
+				return reject(e)
 			}
 			let trx 
 			try {
