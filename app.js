@@ -311,7 +311,7 @@ mongoUtil.connectDB(async (err) => {
 			}
 			let trx 
 			try {
-				trx = await steemtrxfinder.findVoteTrx(match[1], client)
+				trx = await steemtrxfinder.findVoteTrx(client, match[1])
 			} catch(e) {
 				console.log(chalk.red('error at steemtrxfinder'))
 				console.log(e)
