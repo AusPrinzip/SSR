@@ -273,7 +273,7 @@ mongoUtil.connectDB(async (err) => {
 	  return Math.floor(Math.random() * Math.floor(max));
 	}
 
-	function findVote (client, vote) {
+	function findVotePseudoTrx (client, vote) {
 		return new Promise(async (resolve, reject) => {
 			let  permlink = postURL.substr(postURL.lastIndexOf('/') + 1)
 			let voter     = vote.voter
@@ -294,7 +294,7 @@ mongoUtil.connectDB(async (err) => {
 				await wait(0.5)
 				// if (interval > 5000) return reject()
 			}
-			if (interval > 0) console.log(vote.voter + ' findVote resolved with interval = ' + interval)
+			if (interval > 0) console.log(vote.voter + ' findVotePseudoTrx resolved with interval = ' + interval)
 			return resolve(match)
 		})
 	}
@@ -302,16 +302,16 @@ mongoUtil.connectDB(async (err) => {
 	function compute (client, vote, prices) {
 		return new Promise(async(resolve, reject) => {
 			let voter = vote.voter
-			let match
+			let blockNum
 			try {
-				match = await findVote(client, vote)
+				pseudo_trx = await findVotePseudoTrx(client, vote)
 			} catch(e) {
 				console.log(e)
 				return reject(e)
 			}
 			let trx 
 			try {
-				trx = await steemtrxfinder.findVoteTrx(client, match[1])
+				trx = await steemtrxfinder.findVoteTrx(client, pseudo_trx)
 			} catch(e) {
 				console.log(chalk.red('error at steemtrxfinder'))
 				console.log(e)
