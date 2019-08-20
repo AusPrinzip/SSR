@@ -1,12 +1,12 @@
 
-const dsteem              = require('dsteem')
-var   nodes               = ['hive.anyx.io', 'rpc.usesteem.com', 'rpc.steemviz.com', 'anyx.io', 'api.steemit.com', 'steemd.privex.io', 'rpc.steemliberator.com', 'api.steemitdev.com', 'api.steem.house', 'gtg.steem.house:8090', 'appbasetest.timcliff.com']
-const chalk = require('chalk')
-// const log   = console.log()
+const dsteem = require('dsteem')
+var   nodes  = ['hive.anyx.io', 'rpc.usesteem.com', 'rpc.steemviz.com', 'anyx.io', 'api.steemit.com', 'steemd.privex.io', 'rpc.steemliberator.com', 'api.steemitdev.com', 'api.steem.house', 'gtg.steem.house:8090', 'appbasetest.timcliff.com']
+const chalk  = require('chalk')
+
 const blacklist = ['api.steemitdev.com']
 nodes.filter((x) => blacklist.indexOf(x) == -1)
-// console.log(nodes)
-const findtrxfrompermlink = require('../findtrxfrompermlink/app.js')
+
+const steemtrxfinder      = require('steemtrxfinder')
 const sm_pub              = 'STM7yk3tav5BFEyppNzHhKaXsMTPw8xYX1B1gWXq6bvtT34uVUKbQ'
 var mongoUtil             = require('./database')
 const sbt_url             = 'https://steembottracker.net'
@@ -311,9 +311,9 @@ mongoUtil.connectDB(async (err) => {
 			}
 			let trx 
 			try {
-				trx = await findtrxfrompermlink.findVoteTrx(match[1], client)
+				trx = await steemtrxfinder.findVoteTrx(match[1], client)
 			} catch(e) {
-				console.log(chalk.red('error at findtrxfrompermlink'))
+				console.log(chalk.red('error at steemtrxfinder'))
 				console.log(e)
 				return reject(vote)
 			}
@@ -329,7 +329,7 @@ mongoUtil.connectDB(async (err) => {
 				} catch(e) {
 					console.log(trx)
 					console.log(e)
-					if (voter !== trx.operations[0][1].voter) return console.log(chalk.red('trx op voter from "findtrxfrompermlink" result does not match current voter'))
+					if (voter !== trx.operations[0][1].voter) return console.log(chalk.red('trx op voter from "steemtrxfinder" result does not match current voter'))
 					console.log(chalk.red(voter + ': cannot extract pubkey from origin trx'))
 					// console.log(trx)
 					if (i == (trx.signatures.length - 1)) {
