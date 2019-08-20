@@ -12,8 +12,8 @@
     "axios": "^0.19.0",
     "chalk": "^2.4.2",
     "dsteem": "^0.11.2",
-    "mongodb": "^3.2.7",
-    "steem": "^0.7.5",
-    "steemtrxfinder": "^1.0.0"
+    "mongodb": "^3.3.0",
+    "steem": "^0.7.7",
+    "steemtrxfinder": "^1.0.2"
   }
 }
