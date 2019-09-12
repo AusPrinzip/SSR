@@ -1,0 +1,4 @@
+{
+	"nodes": ["hive.anyx.io", "rpc.usesteem.com", "rpc.steemviz.com", "anyx.io", "api.steemit.com", "steemd.privex.io", "rpc.steemliberator.com", "api.steemitdev.com", "api.steem.house", "gtg.steem.house:8090", "appbasetest.timcliff.com"],
+	"blacklist" : ["api.steemitdev.com"]
+}

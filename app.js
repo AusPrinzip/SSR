@@ -1,9 +1,11 @@
 
 const dsteem = require('dsteem')
-var   nodes  = ['hive.anyx.io', 'rpc.usesteem.com', 'rpc.steemviz.com', 'anyx.io', 'api.steemit.com', 'steemd.privex.io', 'rpc.steemliberator.com', 'api.steemitdev.com', 'api.steem.house', 'gtg.steem.house:8090', 'appbasetest.timcliff.com']
+const fs     = require('fs')
+const config = JSON.parse(fs.readFileSync('config.json'))
+var   nodes  = config.nodes
 const chalk  = require('chalk')
 
-const blacklist = ['api.steemitdev.com']
+const blacklist = config.blacklist
 nodes.filter((x) => blacklist.indexOf(x) == -1)
 
 const steemtrxfinder      = require('steemtrxfinder')
@@ -150,7 +152,7 @@ async function start (postURL) {
 			}
 			await getVoteValue(postURL)
 		})
-		
+
 		function fetchHistoricalPrices(postURL) {
 			return new Promise(async (resolve, reject) => {
 				let campaign = await campaigns.find({postURL: postURL}).toArray()
@@ -163,10 +165,6 @@ async function start (postURL) {
 			})
 		}
 	})
-}
-
-async function minnowbooster () {
-	let accounts = await clients[0].database.call('get_accounts', corrupted.map((x) => x.voter))
 }
 
 async function votesLoop (votes, rerun) {
