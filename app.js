@@ -302,7 +302,7 @@ mongoUtil.connectDB(async (err) => {
 	function compute (client, vote, prices) {
 		return new Promise(async(resolve, reject) => {
 			let voter = vote.voter
-			let blockNum
+			let pseudo_trx
 			try {
 				pseudo_trx = await findVotePseudoTrx(client, vote)
 			} catch(e) {
@@ -337,6 +337,7 @@ mongoUtil.connectDB(async (err) => {
 						// console.log(e)
 						// console.log(trx)
 						// console.log(trx.operations[0][1])
+						console.log(vote)
 						smartsteem.insertOne({ account: vote.voter, vote: vote, ignore: false, postURL: postURL, prices: prices, mb: true })
 						return reject(new Error('cannot extract pubkey'))
 					}
@@ -406,38 +407,6 @@ mongoUtil.connectDB(async (err) => {
 	    console.log(payoutUSD + ' $')
 	    console.log(postURL)
 	    checkAllocated(postURL, true).then((res) => console.log(res))
-	}
-
-	// await start()
-	async function test () {
-        if (!process.argv[3]) throw new Error('missing postURL!')
-	    else console.log('postURL => ' + process.argv[3])
-	    let postURL = process.argv[3]
-		var author   = postURL.substring(postURL.lastIndexOf('@') + 1, postURL.lastIndexOf('/'))
-		var permlink = postURL.substr(postURL.lastIndexOf('/') + 1)
-		let client = new dsteem.Client('https://' + nodes[0])
-		let content = await client.database.call('get_content', [author, permlink])
-		let votes = content.active_votes
-		let rshares = 0
-		votes.map((x) => {
-			rshares += parseFloat(x.rshares)
-		})
-		console.log('claim ' + claim)
-		console.log('rshars ' + rshares)
-		let ts = Date.parse(new Date(content.created)) + 7 * 24 * 60 * 60 * 1000
-		let timediff = 12 * 60 * 60 * 1000
-		ts = new Date(ts - timediff)
-		console.log(ts)
-		let archive_element = await archive.find(
-			{'ts':{$gte: ts}}
-		).toArray()
-		let steem_vars = archive_element[0].prices[1]
-		let prices = archive_element[0].prices[0]
-		console.log(steem_vars)
-	    var steemPayout = parseFloat(0.75 * rshares * steem_vars.rewardBalance / parseFloat(steem_vars.recentClaims)).toFixed(3)
-	    console.log(steemPayout + ' STEEM')
-	    var payoutUSD = parseFloat(steemPayout * prices.steem_price).toFixed(3)
-	    console.log(payoutUSD + ' $')
 	}
 	start()
 })
