@@ -1,6 +1,12 @@
 const config = require("../config/index.js");
 const MongoClient = require('mongodb').MongoClient;
 
+function createIndex () { 
+  smartsteem.createIndex( { 'account': 1 },{ unique:true })
+  .then((res) => console.log(res))
+  .catch((e) => console.log(e))
+}
+
 // const utils = require('../scripts/utils_mix.js')
 var host, port, db, user, password 
 // var env = config.env

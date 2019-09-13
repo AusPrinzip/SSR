@@ -76,9 +76,6 @@ async function start (postURL) {
 		const db           = mongoUtil.getDB()
 		const dbase        = db.db('steemium')
 		const smartsteem   = dbase.collection('smartsteem')
-		const campaigns    = dbase.collection('campaigns')
-		const archive      = dbase.collection('archive')
-		const transactions = dbase.collection('transactions')
 
 		var author   = postURL.substring(postURL.lastIndexOf('@') + 1, postURL.lastIndexOf('/'))
 		var permlink = postURL.substr(postURL.lastIndexOf('/') + 1)
@@ -94,14 +91,7 @@ async function start (postURL) {
 		}
 
 		await loadClients(5)
-		let prices = {}
-		try { 
-			prices = await fetchHistoricalPrices(postURL)
-		}catch (e) {
-			console.log('cannot fetch historical price from steemium database (not a steemium promoted post)')
-			console.log(e)
-			// you should get here prices from archive then //
-		}
+
 		console.log('Number of rpc node connections: ' + clients.length)
 		let registry = await smartsteem.find({'get_account_history': {$exists: true}}).toArray()
 
@@ -344,57 +334,6 @@ function compute (client, vote, prices) {
 	})
 }
 
-function createIndex () { 
-	smartsteem.createIndex( { 'account': 1 },{ unique:true })
-	.then((res) => console.log(res))
-	.catch((e) => console.log(e))
-}
-
-function checkAllocated (postURL, only_sm = false) {
-	return new Promise(async (resolve, reject) => {
-		let allocated = {steem: 0 , sbd: 0}
-		let operations = await transactions.find({postURL: postURL}).toArray()
-		operations.forEach((operation) => {
-			if (only_sm) {
-				if (operation.type == 'expense' && operation.to !== 'smartmarket') return
-				else if (operation.type == 'refund' && (operation.from !== 'smartsteem' || operation.amount > 50)) return
-			}
-			if (operation.type == 'expense') {
-				if (operation.currency == 'STEEM') allocated.steem += operation.amount
-				else allocated.sbd += operation.amount
-			} else if (operation.type == 'refund') {
-				if (operation.currency == 'STEEM') allocated.steem -= operation.amount
-				else allocated.sbd -= operation.amount
-			}
-		})
-		return resolve(allocated)
-	})
-}
-async function getVoteValue (postURL) {
-	let test = await smartsteem.find({$and:[{'account':{$exists: true}}, {'postURL': postURL}, {'ignore': false}] }).toArray()
-	let votes = test.map((x) => x.vote)
-	let rshares = 0
-	votes.map((x) => {
-		rshares += parseFloat(x.rshares)
-	})
-	let campaign = await campaigns.find({'postURL': postURL}).toArray()
-	let ts = Date.parse(campaign[0].ts)
-	let timediff = 12 * 60 * 60 * 1000
-	ts = new Date(ts - timediff)
-	console.log(ts)
-	let archive_element = await archive.find(
-		{'ts':{$gte: ts}}
-	).toArray()
-	let steem_vars = archive_element[0].prices[1]
-	let prices = archive_element[0].prices[0]
-	console.log(steem_vars)
-    var steemPayout = parseFloat(0.75 * rshares * steem_vars.rewardBalance / parseFloat(steem_vars.recentClaims)).toFixed(3)
-    console.log(steemPayout + ' STEEM')
-    var payoutUSD = parseFloat(steemPayout * prices.steem_price).toFixed(3)
-    console.log(payoutUSD + ' $')
-    console.log(postURL)
-    checkAllocated(postURL, true).then((res) => console.log(res))
-}
 
 
 module.exports = {
